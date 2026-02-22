@@ -1,0 +1,84 @@
+
+domain {
+  # properties
+  property flow, head, tank_shape, link_shape, signal {ON, OFF}
+
+  # estimation model
+  model tank_mass, junction_mass, demand_mass, link_energy
+
+  # physical components classes
+  physical junction(head, flow, junction_mass):
+      flow -> junction_mass,
+      junction_mass -> flow
+
+  physical demand(head, flow, demand_mass):
+      flow -> demand_mass,
+      demand_mass -> flow
+
+  physical pipe(link_shape, flow, link_energy):
+      link_shape -> link_energy,
+      link_energy -> flow
+
+  physical tank (tank_shape, head, tank_mass):
+      tank_shape -> tank_mass,
+      tank_mass -> head
+
+  actuator pump(link_shape, flow, link_energy):
+      link_shape -> link_energy,
+      link_energy -> flow
+
+  # translation function
+  translation pipe -> junction :
+      pipe.flow -> junction.junction_mass,
+      junction.junction_mass -> pipe.flow,
+      junction.head->pipe.link_energy
+
+  translation junction -> pipe:
+      pipe.flow -> junction.junction_mass,
+      junction.junction_mass -> pipe.flow,
+      junction.head->pipe.link_energy
+
+  translation pipe -> tank:
+      pipe.flow -> tank.tank_mass,
+      tank.head -> pipe.link_energy
+
+  translation tank -> pipe:
+      pipe.flow -> tank.tank_mass,
+      tank.head -> pipe.link_energy
+
+  translation pump -> junction:
+      pump.flow -> junction.junction_mass,
+      junction.junction_mass -> pump.flow,
+      junction.head->pump.link_energy
+
+  translation junction -> pump:
+      pump.flow -> junction.junction_mass,
+      junction.junction_mass -> pump.flow,
+      junction.head->pump.link_energy
+
+  translation pump -> tank:
+      pump.flow -> tank.tank_mass
+
+  translation tank -> pump:
+      pump.flow -> tank.tank_mass
+
+  translation pipe -> demand:
+      pipe.flow -> demand.demand_mass,
+      demand.demand_mass -> pipe.flow,
+      demand.head->pipe.link_energy
+
+  translation demand -> pipe:
+      pipe.flow -> demand.demand_mass,
+      demand.demand_mass -> pipe.flow,
+      demand.head->pipe.link_energy
+
+  translation pump -> demand:
+      pump.flow -> demand.demand_mass,
+      demand.demand_mass -> pump.flow,
+      demand.head->pump.link_energy
+
+  translation demand -> pump:
+      pump.flow -> demand.demand_mass,
+      demand.demand_mass -> pump.flow,
+      demand.head->pump.link_energy
+}

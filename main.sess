@@ -1,0 +1,156 @@
+import wdnSimulator
+import homeostasis
+import reconf
+
+val iCPSDLinitCommand as
+	"wdn := load iCPSDL/example/wdn
+	agents := load iCPSDL/example/agents
+	simple := load iCPSDL/example/simple
+	seg := translate simple
+	trees := traverse t.head seg
+	lc0 := configure trees[0] agents controller u
+	lc0 := compose lc0"
+
+val iCPSDLCommand as
+	"faulty := load iCPSDL/example/faulty
+	seg := translate faulty
+	trees := traverse t.head seg
+	lc0 := configure trees[0] agents controller u
+	lc0 := compose lc0"
+
+#####################################################################################################
+# initialise process: initialises the simulation
+#####################################################################################################
+
+init: local u. u!record { stopWDNSimulator (local. end), iCPSDL io, stopConf (local. end) }
+proc init user.
+
+	# Start the water distribution simulator
+	conc with {
+		role u as current
+		role sim as startWDNSimulator u
+	}
+
+	# Get the broker that controls the water distribution simulator
+	stopWDN (local. end) <- sim
+
+	# Create an iCPSDL api service
+	i io <-	inp[{
+					service:	"api",
+					action:		"connect",
+					name:		"iCPSDL"
+				}]
+	# Initialise the state of the iCPSDL service
+	conf string <-	inp[{
+						service:	"api",
+						action:		"request",
+						api:		i,
+						request:	iCPSDLinitCommand,
+					}]
+	# deploy the homeostasis control loop
+	conc with
+		role u as current
+		role start as startHomeostasisConfiguration u
+
+	stop (local. end) <- start
+	user <- { stopWDNSimulator: stopWDN, iCPSDL: i, stopConf: stop }
+
+#####################################################################################################
+# eventManager process
+#####################################################################################################
+
+eventManager: local iproxy. select iproxy { OK: end } or { Reconf: end } 
+proc eventManager ip.
+	s6Status bool <- inp[{
+							service:	"memory",
+							action:		"read",
+							registryID:	"wdn",
+							field:		"s6"
+						}
+					]
+
+	if		not s6Status
+	then	ip <- OK
+	else	ip <- Reconf
+
+
+#####################################################################################################
+# iCPSDL proxy process
+#####################################################################################################
+iCPSDLProxy: local u em.
+	u? record { stopWDNSimulator (local. end), iCPSDL io, stopConf (local. end) }.
+	branch em {
+		OK: end
+	} or {
+		Reconf: end 
+	}
+
+proc iCPSDLProxy user eventM.
+	r record { stopWDNSimulator (local. end), iCPSDL io, stopConf (local. end) } <- user
+	branch eventM of
+		OK:		#dService <- OK
+				conc with
+					role u as current
+					role iProxy as iCPSDLProxy u em
+					role em as eventManager iProxy
+				#	role ds as deploymentService iProxy
+				iProxy <- { stopWDNSimulator: r.stopWDNSimulator, iCPSDL: r.iCPSDL, stopConf: r.stopConf }
+
+		Reconf: conf string <- inp[{
+						service:	"api",
+						action:		"request",
+						api:		r.iCPSDL,
+						request:	iCPSDLCommand,
+					}]
+				conc with
+					role u as current
+					role ds as deploymentService u
+				ds <- { stopWDNSimulator: r.stopWDNSimulator, stopConf: r.stopConf, iCPSDLconf: conf }
+
+
+#####################################################################################################
+# deployment service
+#####################################################################################################
+deploymentService: local ip. ip? (record { stopWDNSimulator (local. end), stopConf (local. end), iCPSDLconf string })
+proc deploymentService iproxy.
+	r record {stopWDNSimulator (local. end), stopConf (local. end), iCPSDLconf string } <- iproxy
+
+	out[sleepService] <- 1000
+
+	out <- "Stoping homestastis configuration\n"
+	conc with role sH as r.stopConf
+
+	out <- "Deploy iCSPDL reconfiguration\n" <- r.iCPSDLconf <- "\n"
+
+	conc with
+		role u as current
+		role start as startReconfiguration u
+
+	hstate headState <- inp[{service: "memory", action: "read", registryID: "tankHstate", field: "hstate"}]
+	start <- hstate
+	stop (local. end) <- start
+	out[sleepService] <- 2000
+
+	# ending the simulation
+	# signal the simulator broker to close the water network simulation
+	conc with role sR as stop
+	conc with role sWDN as r.stopWDNSimulator
+	out <- "done\n"
+
+
+
+main: local. end
+proc main.
+	# initialise the simulator with a homeostatic configuration
+	conc with
+		role u as current
+		role i as init u
+	r record { stopWDNSimulator (local. end) , iCPSDL io, stopConf (local. end) } <- i
+
+	# run the EventManager and the iCPSDL proxy
+	conc with
+		role u as current
+		role ip as iCPSDLProxy u em
+		role em as eventManager ip
+	ip <- r
+

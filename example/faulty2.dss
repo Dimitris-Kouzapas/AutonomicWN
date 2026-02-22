@@ -1,0 +1,35 @@
+process wdn {
+    # hardware
+    device    dev1, dev3
+
+    # physical components
+    physical  r, d        demand
+    physical  j           junction
+    physical  p1, p2      pipe
+    physical  t           tank
+
+    # actuator
+    actuator  u@dev1      pump
+
+    # sensors
+    sensor    s1@dev1,
+              s3@dev1     head
+
+    sensor    s2@dev1,
+              s4@dev1,
+              s8@dev3     flow
+
+    # connections
+    conn      r -> u,
+              u -> j,
+              j -> p1,
+              p1 -> t,
+              t -> p2,
+              p2-> d
+
+    conn      r -> s1,
+              u -> s2,
+              j -> s3,
+              j -> s4,
+              d -> s8
+}
