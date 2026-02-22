@@ -1,0 +1,27 @@
+repository wdn {
+    estimate junction_mass using
+          jmass = loop. producer1? flow. producer2? flow. consumer1! flow. loop
+
+    estimate demand_mass using
+          dmass = loop. producer1? flow. consumer1! flow. loop
+
+    estimate tank_mass using
+          tmass = loop. producer1? flow. producer2? flow. consumer1!head. loop
+
+    estimate link_energy using
+          lenergy = #supervisor? link_shape.
+                    loop. producer1? head. producer2? head. consumer1!flow. loop
+
+    sense head using
+          headSensor = loop. consumer1! head. loop
+
+    sense flow using
+          flowSensor = loop. consumer1! flow. loop
+
+    control pump using
+          controller =  #supervisor? thr1. supervisor? thr2.
+                        loop. producer1? head. consumer1!signal { ON: loop } or { OFF: loop }
+
+    actuate pump using
+          pumpActuator = loop. producer1? signal { ON: loop } or { OFF: loop }
+}

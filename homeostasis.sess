@@ -1,0 +1,64 @@
+import wdnSimulator
+
+type homeostasis global s6 controller pump updater.
+	updater -> controller: bool.
+	s6 -> controller: float.
+	controller -> pump {
+		ON: end
+	} or {
+		OFF: end
+	}
+
+broker homeostasisBroker sync {
+	chan:	homeostasis
+}
+
+s6Proxy: homeostasis(s6)
+proc s6Proxy c.
+	tl headState = readHeadState("tank_level")
+	c <- tl.head
+	out[{service: "memory", action: "write", registryID: "tankHstate"}] <- { hstate: tl }
+	rec(homeostasisBroker) with
+		recursion role s6 as s6Proxy controller
+
+controllerImpl: homeostasis(controller)
+proc controllerImpl s6 pump updater.
+	state bool <- updater
+    height float <- s6
+
+	if 		(not state && height < 20) || (state && height < 30)
+	then	pump <- ON
+			rec(homeostasisBroker) with
+				recursion role controller as controllerImpl s6 pump updater
+                role updater as (proc u. u <- true) controller 
+	else	pump <- OFF
+			rec(homeostasisBroker) with
+				recursion role controller as controllerImpl s6 pump updater
+                role updater as (proc u. u <- false) controller
+
+pump: homeostasis(pump)
+proc pump contr.
+	branch contr of
+		ON:		status bool = actuatePump(true)
+				rec(homeostasisBroker) with
+					recursion role pump as pump controller
+		OFF:	status bool = actuatePump(false)
+				rec(homeostasisBroker) with
+					recursion role pump as pump controller
+
+
+startHomeostasisConfiguration: local u. u! (local. end)
+proc startHomeostasisConfiguration u.
+	# start the control configuration for the water distribution simulation
+	conc with
+		role s6 as s6Proxy c
+		role c as controllerImpl s6 p up
+		role p as pump c
+		role up as (proc c. c <- false) c
+
+	u <- stopHomeostasisConfiguration
+
+stopHomeostasisConfiguration: local. end
+proc stopHomeostasisConfiguration.
+	homeostasisBroker <- .close
+
